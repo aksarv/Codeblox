@@ -30,6 +30,8 @@ operations = [pygame.transform.scale(o, (72, 72)) for o in operations]
 comparisons = [pygame.transform.scale(o, (72, 72)) for o in comparisons]
 turtle2Ds = [pygame.transform.scale(o, (o.get_width() // (o.get_height() / 72), 72)) for o in turtle2Ds]
 
+numberKeys = [pygame.K_0, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]
+
 
 # subroutine to draw text centered at an x and y
 def draw_text_center(surf, text, x, y, font, color):
@@ -310,7 +312,7 @@ def evaluateExpr(block, prev=""):
         return block.n
     if isinstance(block, Variable):
         return globals[block.name]
-    if block is None:
+    if not (isinstance(block, Operation) or isinstance(block, Comparison)):
         raise SyntaxError(prev)
 
     # evaluate left and right subtrees then apply the operator to the results
@@ -337,17 +339,26 @@ def addBlock(block, toAdd, x, y, pos_x, pos_y, par=None, attr=None):
     elif isinstance(block, TurtleWait):
         if pos_x + 5 + FONT.size("wait")[0] <= x <= pos_x + 5 + FONT.size("wait")[0] + get_width(
                 block.time) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.time):
-            addBlock(block.time, toAdd, x, y, x + 5 + FONT.size("wait")[0], y + 5, par=block, attr="time")
+            addBlock(block.time, toAdd, x, y, pos_x + 5 + FONT.size("wait")[0], pos_y + 5, par=block, attr="time")
     elif isinstance(block, Turtle2DMoveForward):
         if pos_x + 5 + FONT.size("moveForward")[0] <= x <= pos_x + 5 + FONT.size("moveForward")[0] + get_width(
                 block.dist) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.dist):
-            addBlock(block.dist, toAdd, x, y, x + 5 + FONT.size("moveForward")[0], y + 5, par=block, attr="dist")
+            addBlock(block.dist, toAdd, x, y, pos_x + 5 + FONT.size("moveForward")[0], pos_y + 5, par=block, attr="dist")
     elif isinstance(block, Turtle2DRotate):
         if pos_x + 5 + FONT.size("rotate")[0] <= x <= pos_x + 5 + FONT.size("rotate")[0] + get_width(
                 block.angle) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.angle):
-            addBlock(block.angle, toAdd, x, y, x + 5 + FONT.size("rotate")[0], y + 5, par=block, attr="angle")
+            addBlock(block.angle, toAdd, x, y, pos_x + 5 + FONT.size("rotate")[0], pos_y + 5, par=block, attr="angle")
     elif isinstance(block, Turtle2DMovement):
-        pass
+        if pos_x + 5 + FONT.size("move")[0] <= x <= pos_x + 5 + FONT.size("move")[0] + get_width(block.start_x) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.start_x):
+            addBlock(block.start_x, toAdd, x, y, pos_x + 5 + FONT.size("move")[0], pos_y + 5, par=block, attr="start_x")
+        elif pos_x + 10 + FONT.size("move")[0] + get_width(block.start_x) <= x <= pos_x + 10 + FONT.size("move")[0] + get_width(block.start_x) + get_width(block.start_y) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.start_y):
+            addBlock(block.start_y, toAdd, x, y, pos_x + FONT.size("move")[0] + 10 + get_width(block.start_x), pos_y + 5, par=block, attr="start_y")
+        elif pos_x + 15 + FONT.size("move")[0] + get_width(block.start_x) + get_width(block.start_y) <= x <= pos_x + 15 + FONT.size("move")[0] + get_width(block.start_x) + get_width(block.start_y) + get_width(block.dest_x) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.dest_x):
+            addBlock(block.dest_x, toAdd, x, y, pos_x + FONT.size("move")[0] + 15 + get_width(block.start_x) + get_width(block.start_y),
+                  pos_y + 5, par=block, attr="dest_x")
+        elif pos_x + 20 + FONT.size("move")[0] + get_width(block.start_x) + get_width(block.start_y) + get_width(block.dest_x) <= x <= pos_x + 20 + FONT.size("move")[0] + get_width(block.start_x) + get_width(block.start_y) + get_width(block.dest_x) + get_width(block.dest_y) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.dest_y):
+            addBlock(block.dest_y, toAdd, x, y, pos_x + FONT.size("move")[0] + 20 + get_width(block.start_x) + get_width(block.start_y) + get_width(
+                      block.dest_x), pos_y + 5, par=block, attr="dest_y")
     elif isinstance(block, Turtle2DMovementLinp):
         pass
 
@@ -362,15 +373,15 @@ scr = pygame.display.set_mode((scr_width, scr_height), pygame.RESIZABLE)
 # store the lines that should be displayed in the terminal - will update if the user adds blocks then runs again
 # buffer the new blocks that should be added if applicable
 code = []
-for i in range(3):
+for i in range(6):
     code.append(Block(Turtle2DRotate(Number(60)), 100, i * 100 * 2 + 100))
-    code.append(Block(Turtle2DMoveForward(Number(5)), 100, i * 100 * 2 + 150))
+    code.append(Block(Turtle2DMoveForward(Number(2)), 100, i * 100 * 2 + 150))
 prev_mouse_x, prev_mouse_y = None, None
 selected_new_block = None
 join_new_block = None
 sensitivity = 1
+enteredNumber = ""
 current_outputs = []
-active = []
 
 turtle = Turtle2D()
 menu = Menu(
@@ -424,7 +435,7 @@ while run:
                         try:
                             output = f"Ran block {run_order.index(block) + 1}: " + str(evaluateExpr(block.block))
                         except SyntaxError as e:
-                            output = f"Error running block {run_order.index(block) + 1}: {e} missing argument"
+                            output = f"Error running block {run_order.index(block) + 1}: missing or invalid argument provided to {e}"
                         wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
                         outputs.append(wrapped)
                     elif isinstance(block.block, Turtle2DMovement):
@@ -460,7 +471,6 @@ while run:
                     elif isinstance(block.block, Turtle2DRotate):
                         output = f"Ran block {run_order.index(block) + 1}"
                         turtle.angle += math.radians(evaluateExpr(block.block.angle))
-
                 outputs.insert(0, [now[i: i + line_length] for i in range(0, len(now), line_length)])
                 current_outputs = copy.deepcopy(outputs)
             elif 0 <= mouse_x <= 40 and 0 <= mouse_y <= 40:
@@ -494,6 +504,14 @@ while run:
                         join_new_block = block.block
                         del code[b]
                         break
+        if event.type == pygame.KEYDOWN:
+            key = event.unicode
+            if event.key == pygame.K_BACKSPACE:
+                enteredNumber = enteredNumber[:-1]
+            elif event.key == pygame.K_RETURN:
+                code.append(Block(Number(numerify(enteredNumber)), 0, 0))
+            elif any(x == event.key for x in numberKeys) or event.key == pygame.K_PERIOD:
+                enteredNumber += key
 
     # refresh screen
     scr.fill((255, 255, 255))
@@ -578,6 +596,10 @@ while run:
                                          centre_y - turtle.y * turtle.pixels_per_unit - 10 * math.sin(
                                              turtle.angle + math.pi / 1.5 * 2))])
 
+    # entering numbers to add them (will add at 0, 0)
+    pygame.draw.rect(scr, (255, 255, 255), [0, scr_height - 50, scr_width // 2 - scr_width // 12.8, 50])
+    draw_text_center(scr, enteredNumber, (scr_width / 2 - scr_width / 12.8) // 2, scr_height - 25, FONT, (0, 0, 0))
+
     # draw the increase and decrease size buttons
     pygame.draw.rect(scr, (255, 255, 255), [0, 0, 40, 40])
     pygame.draw.rect(scr, (255, 255, 255), [0, 40, 40, 40])
@@ -592,6 +614,7 @@ while run:
                      (scr_width // 2 - scr_width // 12.8, scr_height), 10)
 
     pygame.draw.line(scr, (0, 0, 0), (scr_width // 2, scr_height // 2), (scr_width, scr_height // 2), 10)
+    pygame.draw.line(scr, (0, 0, 0), (0, scr_height - 50), (scr_width // 2 - scr_width // 12.8, scr_height - 50), 10)
 
     # deal with mouse hand logic
     mouse_x, mouse_y = pygame.mouse.get_pos()
