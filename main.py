@@ -11,9 +11,10 @@ globals = {}
 
 FONT_SIZE = 20
 FONT = pygame.font.SysFont("SF Mono", FONT_SIZE)
+BOLD_FONT = pygame.font.SysFont("SF Mono", FONT_SIZE, bold=True)
 # use this to work out how many characters we can fit with a set number of pixels
 # only one character needed as the font is monospaced
-char_width, char_height = FONT.size("A")
+char_width, char_height = FONT.size("n")
 
 magnifyPlus = pygame.transform.scale(pygame.image.load("magnifyPlus.png"), (30, 30))
 magnifyMinus = pygame.transform.scale(pygame.image.load("magnifyMinus.png"), (30, 30))
@@ -33,8 +34,9 @@ turtle2Ds = [pygame.transform.scale(o, (o.get_width() // (o.get_height() / 72), 
 assignments = pygame.image.load("assignment.png")
 assignments = pygame.transform.scale(assignments, (assignments.get_width() // (assignments.get_height() / 72), 72))
 
-numberKeys = [pygame.K_0, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7,
-              pygame.K_8, pygame.K_9]
+numberKeys = [pygame.K_0, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]
+
+alphaKeys = [pygame.K_a, pygame.K_b, pygame.K_c, pygame.K_d, pygame.K_e, pygame.K_f, pygame.K_g, pygame.K_h, pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l, pygame.K_m, pygame.K_n, pygame.K_o, pygame.K_p, pygame.K_q, pygame.K_r, pygame.K_s, pygame.K_t, pygame.K_u, pygame.K_v, pygame.K_w, pygame.K_x, pygame.K_y, pygame.K_z]
 
 
 # subroutine to draw text centered at an x and y
@@ -96,6 +98,13 @@ class Comparison:
         self.right = right
 
 
+class IfElse:
+    def __init__(self, cond, true, false):
+        self.cond = cond
+        self.true = true + [None]
+        self.false = false + [None]
+
+
 class Turtle2D:
     def __init__(self):
         self.x = 0
@@ -119,9 +128,6 @@ class Turtle2DMovementLinp:
         self.dest_y = dest_y
         self.start_x = start_x
         self.start_y = start_y
-        self.curr_x = start_x
-        self.curr_y = start_y
-        self.finished = False
         self.t = t
 
 
@@ -131,9 +137,6 @@ class Turtle2DMovement:
         self.dest_y = dest_y
         self.start_x = start_x
         self.start_y = start_y
-        self.curr_x = start_x
-        self.curr_y = start_y
-        self.finished = False
 
 
 class Turtle2DMoveForward:
@@ -179,10 +182,10 @@ class TraceTable:
             self.traceDict[varName][-1] = value
         else:
             if self.traceDict[varName][-1] is not None:
-                 for key in self.traceDict.keys():
-                     self.traceDict[key].append(None)
-                 self.traceDict[varName][-1] = value
-                 self.length += 1
+                for key in self.traceDict.keys():
+                    self.traceDict[key].append(None)
+                self.traceDict[varName][-1] = value
+                self.length += 1
             else:
                 self.traceDict[varName][-1] = value
 
@@ -213,6 +216,9 @@ def get_max_depth(block):
         return 1 + get_max_depth(block.angle)
     elif isinstance(block, Assignment):
         return 1 + get_max_depth(block.expr)
+    elif isinstance(block, IfElse):
+        return 1 + max(get_max_depth(block.cond), max(get_max_depth(x) for x in block.true),
+                       max(get_max_depth(x) for x in block.false))
 
 
 # get the width a block needs to be - to find the left offset to draw the right block in drawing functions
@@ -239,6 +245,10 @@ def get_width(block):
         return get_width(block.angle) + 20 + FONT.size("rotate")[0]
     elif isinstance(block, Assignment):
         return get_width(block.expr) + 20 + FONT.size(block.varName + " <- ")[0]
+    elif isinstance(block, IfElse):
+        return get_width(block.cond) + 30 + FONT.size("if")[0] + FONT.size("then")[0] + FONT.size("else")[0] + 5 * (
+                    len(block.true) + len(block.false)) + sum(get_width(x) for x in block.true) + sum(
+            get_width(x) for x in block.false)
 
 
 # recursive drawing subroutine
@@ -346,6 +356,23 @@ def drawBlock(block, x, y, last_height=None):
                          (2 * y + overall_height) // 2, FONT,
                          (0, 0, 0))
         drawBlock(block.expr, x + 5 + FONT.size(block.varName + " <- ")[0], y + 5, last_height=overall_height)
+    elif isinstance(block, IfElse):
+        pygame.draw.rect(scr, (255, 255, 0), [x, y, overall_width, overall_height])
+        pygame.draw.rect(scr, (128, 128, 0), [x, y, overall_width, overall_height], 2)
+        draw_text_center(scr, "if", x + 5 + FONT.size("if")[0] // 2, (2 * y + overall_height) // 2, FONT, (0, 0, 0))
+        drawBlock(block.cond, x + 5 + FONT.size("if")[0], y + 5, last_height=overall_height)
+        draw_text_center(scr, "then", x + 5 + FONT.size("if")[0] + get_width(block.cond) + FONT.size("then")[0] // 2,
+                         (2 * y + overall_height) // 2, FONT, (0, 0, 0))
+        start_x = x + 10 + FONT.size("if")[0] + get_width(block.cond) + FONT.size("then")[0]
+        for statement in block.true:
+            drawBlock(statement, start_x, y + 5, last_height=overall_height)
+            start_x += 5 + get_width(statement)
+        start_x += 20
+        draw_text_center(scr, "else", start_x, (2 * y + overall_height) // 2, FONT, (0, 0, 0))
+        start_x += FONT.size("else")[0] - 20
+        for statement in block.false:
+            drawBlock(statement, start_x, y + 5, last_height=overall_height)
+            start_x += 5 + get_width(statement)
 
 
 # combines an expression/block tree with its associated x and y
@@ -377,10 +404,101 @@ def evaluateExpr(block, prev=""):
     return evalLeft + evalRight if block.sign == "+" else evalLeft - evalRight if block.sign == "-" else evalLeft * evalRight if block.sign == "×" else evalLeft / evalRight if block.sign == "÷" else evalLeft ** evalRight if block.sign == "^" else evalLeft > evalRight if block.sign == ">" else evalLeft < evalRight if block.sign == "<" else evalLeft == evalRight if block.sign == "=" else 0
 
 
+ifElseOutputs = []
+
+
+def evaluateIfElse(block, num):
+    if evaluateExpr(block.cond):
+        for statement in block.true:
+            if not isinstance(statement, IfElse):
+                execute(statement, num)
+            else:
+                evaluateIfElse(statement, num)
+    else:
+        for statement in block.false:
+            if not isinstance(statement, IfElse):
+                execute(statement, num)
+            else:
+                evaluateIfElse(statement, num)
+
+
+def execute(block, num):
+    if isinstance(block, Comparison) or isinstance(block, Operation) or isinstance(
+            block, Number):
+        try:
+            output = f"Ran block {num}: " + str(evaluateExpr(block))
+        except SyntaxError as e:
+            output = f"Error running block {num}: missing or invalid argument provided to {e}"
+        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
+        outputs.append(wrapped)
+    elif isinstance(block, Turtle2DMovement):
+        s_x, s_y = evaluateExpr(block.start_x), evaluateExpr(block.start_y)
+        d_x, d_y = evaluateExpr(block.dest_x), evaluateExpr(block.dest_y)
+        output = f"Ran block {num}"
+        turtle.relocate(s_x, s_y)
+        delta_x = d_x - s_x
+        delta_y = d_y - s_y
+        dist = math.hypot(delta_x, delta_y)
+        angle = math.atan(delta_y / delta_x)
+        # second quadrant
+        if delta_x < 0 < delta_y:
+            angle += math.pi / 2
+        # third quadrant
+        elif delta_x < 0 and delta_y < 0:
+            angle += math.pi
+        # fourth quadrant
+        elif delta_y < 0 < delta_x:
+            angle += math.pi / 2 * 3
+        turtle.angle = angle
+        turtle.move(dist)
+        if [(s_x, s_y), (d_x, d_y)] not in turtle.lines:
+            turtle.lines.append([(s_x, s_y), (d_x, d_y)])
+        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
+        outputs.append(wrapped)
+    elif isinstance(block, Turtle2DMoveForward):
+        output = f"Ran block {num}"
+        s_x, s_y = turtle.x, turtle.y
+        try:
+            turtle.move(evaluateExpr(block.dist))
+            d_x, d_y = turtle.x, turtle.y
+            turtle.lines.append([(s_x, s_y), (d_x, d_y)])
+        except SyntaxError as e:
+            if not e:
+                output = f"Error running block {num}: turtle move forward missing argument"
+            else:
+                output = f"Error running block {num}: {e} missing argument"
+        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
+        outputs.append(wrapped)
+    elif isinstance(block, Turtle2DRotate):
+        output = f"Ran block {num}"
+        try:
+            turtle.angle += math.radians(evaluateExpr(block.angle))
+        except SyntaxError as e:
+            if not e:
+                output = f"Error running block {num}: turtle rotation missing argument"
+            else:
+                output = f"Error running block {num}: {e} missing argument"
+        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
+        outputs.append(wrapped)
+    elif isinstance(block, Assignment):
+        output = f"Ran block {num}"
+        globals[block.varName] = evaluateExpr(block.expr)
+        trace.update(block.varName, evaluateExpr(block.expr))
+        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
+        outputs.append(wrapped)
+
+
 def addBlock(block, toAdd, x, y, pos_x, pos_y, par=None, attr=None):
     if block is None:
+        if attr == "true":
+            par.true[-1] = toAdd
+            par.true = par.true + [None]
+            return
+        if attr == "false":
+            par.false[-1] = toAdd
+            par.false = par.false + [None]
+            return
         setattr(par, attr, toAdd)
-        return
     if isinstance(block, Comparison) or isinstance(block, Operation):
         if pos_x + 5 <= x <= pos_x + 5 + get_width(block.left) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(
                 block.left):
@@ -407,26 +525,42 @@ def addBlock(block, toAdd, x, y, pos_x, pos_y, par=None, attr=None):
             addBlock(block.start_x, toAdd, x, y, pos_x + 5 + FONT.size("move")[0], pos_y + 5, par=block, attr="start_x")
         elif pos_x + 10 + FONT.size("move")[0] + get_width(block.start_x) <= x <= pos_x + 10 + FONT.size("move")[
             0] + get_width(block.start_x) + get_width(
-                block.start_y) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.start_y):
+            block.start_y) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.start_y):
             addBlock(block.start_y, toAdd, x, y, pos_x + FONT.size("move")[0] + 10 + get_width(block.start_x),
                      pos_y + 5, par=block, attr="start_y")
         elif pos_x + 15 + FONT.size("move")[0] + get_width(block.start_x) + get_width(
                 block.start_y) <= x <= pos_x + 15 + FONT.size("move")[0] + get_width(block.start_x) + get_width(
-                block.start_y) + get_width(block.dest_x) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(
-                block.dest_x):
+            block.start_y) + get_width(block.dest_x) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(
+            block.dest_x):
             addBlock(block.dest_x, toAdd, x, y,
                      pos_x + FONT.size("move")[0] + 15 + get_width(block.start_x) + get_width(block.start_y),
                      pos_y + 5, par=block, attr="dest_x")
         elif pos_x + 20 + FONT.size("move")[0] + get_width(block.start_x) + get_width(block.start_y) + get_width(
                 block.dest_x) <= x <= pos_x + 20 + FONT.size("move")[0] + get_width(block.start_x) + get_width(
-                block.start_y) + get_width(block.dest_x) + get_width(
-                block.dest_y) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.dest_y):
+            block.start_y) + get_width(block.dest_x) + get_width(
+            block.dest_y) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.dest_y):
             addBlock(block.dest_y, toAdd, x, y,
                      pos_x + FONT.size("move")[0] + 20 + get_width(block.start_x) + get_width(
                          block.start_y) + get_width(
                          block.dest_x), pos_y + 5, par=block, attr="dest_y")
-    elif isinstance(block, Turtle2DMovementLinp):
-        pass
+    elif isinstance(block, IfElse):
+        if pos_x + 5 + FONT.size("if")[0] <= x <= pos_x + 5 + FONT.size("if")[0] + get_width(
+                block.cond) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.cond):
+            addBlock(block.cond, toAdd, x, y, pos_x + 5 + FONT.size("if")[0], pos_y + 5, par=block, attr="cond")
+        start_x = pos_x + 10 + FONT.size("if")[0] + get_width(block.cond) + FONT.size("then")[0]
+        for statement in block.true:
+            if start_x <= x <= start_x + get_width(statement) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(
+                    statement):
+                addBlock(statement, toAdd, x, y, start_x, pos_y + 5, par=block, attr="true")
+                break
+            start_x += 5 + get_width(statement)
+        start_x += FONT.size("else")[0]
+        for statement in block.false:
+            if start_x <= x <= start_x + get_width(statement) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(
+                    statement):
+                addBlock(statement, toAdd, x, y, start_x, pos_y + 5, par=block, attr="false")
+                break
+            start_x += 5 + get_width(statement)
 
 
 # initialise display surface to 1280 by 720 (720p)
@@ -438,11 +572,8 @@ scr = pygame.display.set_mode((scr_width, scr_height), pygame.RESIZABLE)
 # store a sensitivity for the pan
 # store the lines that should be displayed in the terminal - will update if the user adds blocks then runs again
 # buffer the new blocks that should be added if applicable
-code = [Block(Assignment("var", Number(3)), 100, 100),
-        Block(Assignment("var", Number(4)), 100, 200),
-        Block(Assignment("var2", Number(4)), 100, 300),
-        Block(Assignment("var3", Number(5)), 100, 400),
-        Block(Turtle2DRotate(Variable("var2")), 100, 500)]
+code = [Block(IfElse(Comparison(">", Number(2), Number(3)), [Operation("+", Number(1), Number(2))],
+                     [Operation("+", Number(2), Number(3))]), 100, 100)]
 """for i in range(6):
     code.append(Block(Turtle2DRotate(Number(60)), 100, i * 100 * 2 + 100))
     code.append(Block(Turtle2DMoveForward(Number(2)), 100, i * 100 * 2 + 150))"""
@@ -450,7 +581,7 @@ prev_mouse_x, prev_mouse_y = None, None
 selected_new_block = None
 join_new_block = None
 sensitivity = 1
-enteredNumber = ""
+enteredText = ""
 current_outputs = []
 
 turtle = Turtle2D()
@@ -502,79 +633,22 @@ while run:
                 outputs = []
                 line_length = scr_width // 2 // char_width - 1
                 for block in run_order:
-                    if isinstance(block.block, Comparison) or isinstance(block.block, Operation) or isinstance(
-                            block.block, Number):
-                        try:
-                            output = f"Ran block {run_order.index(block) + 1}: " + str(evaluateExpr(block.block))
-                        except SyntaxError as e:
-                            output = f"Error running block {run_order.index(block) + 1}: missing or invalid argument provided to {e}"
-                        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
-                        outputs.append(wrapped)
-                    elif isinstance(block.block, Turtle2DMovement):
-                        s_x, s_y = evaluateExpr(block.block.start_x), evaluateExpr(block.block.start_y)
-                        d_x, d_y = evaluateExpr(block.block.dest_x), evaluateExpr(block.block.dest_y)
-                        output = f"Ran block {run_order.index(block) + 1}"
-                        turtle.relocate(s_x, s_y)
-                        delta_x = d_x - s_x
-                        delta_y = d_y - s_y
-                        dist = math.hypot(delta_x, delta_y)
-                        angle = math.atan(delta_y / delta_x)
-                        # second quadrant
-                        if delta_x < 0 < delta_y:
-                            angle += math.pi / 2
-                        # third quadrant
-                        elif delta_x < 0 and delta_y < 0:
-                            angle += math.pi
-                        # fourth quadrant
-                        elif delta_y < 0 < delta_x:
-                            angle += math.pi / 2 * 3
-                        turtle.angle = angle
-                        turtle.move(dist)
-                        if [(s_x, s_y), (d_x, d_y)] not in turtle.lines:
-                            turtle.lines.append([(s_x, s_y), (d_x, d_y)])
-                        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
-                        outputs.append(wrapped)
-                    elif isinstance(block.block, Turtle2DMoveForward):
-                        output = f"Ran block {run_order.index(block) + 1}"
-                        s_x, s_y = turtle.x, turtle.y
-                        try:
-                            turtle.move(evaluateExpr(block.block.dist))
-                            d_x, d_y = turtle.x, turtle.y
-                            turtle.lines.append([(s_x, s_y), (d_x, d_y)])
-                        except SyntaxError as e:
-                            if not e:
-                                output = f"Error running block {run_order.index(block) + 1}: turtle move forward missing argument"
-                            else:
-                                output = f"Error running block {run_order.index(block) + 1}: {e} missing argument"
-                        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
-                        outputs.append(wrapped)
-                    elif isinstance(block.block, Turtle2DRotate):
-                        output = f"Ran block {run_order.index(block) + 1}"
-                        try:
-                            turtle.angle += math.radians(evaluateExpr(block.block.angle))
-                        except SyntaxError as e:
-                            if not e:
-                                output = f"Error running block {run_order.index(block) + 1}: turtle rotation missing argument"
-                            else:
-                                output = f"Error running block {run_order.index(block) + 1}: {e} missing argument"
-                        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
-                        outputs.append(wrapped)
-                    elif isinstance(block.block, Assignment):
-                        output = f"Ran block {run_order.index(block) + 1}"
-                        globals[block.block.varName] = evaluateExpr(block.block.expr)
-                        trace.update(block.block.varName, evaluateExpr(block.block.expr))
-                        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
-                        outputs.append(wrapped)
+                    if not isinstance(block.block, IfElse):
+                        execute(block.block, run_order.index(block) + 1)
+                    else:
+                        evaluateIfElse(block.block, run_order.index(block) + 1)
                 outputs.insert(0, [now[i: i + line_length] for i in range(0, len(now), line_length)])
                 current_outputs = copy.deepcopy(outputs)
             elif 0 <= mouse_x <= 40 and 0 <= mouse_y <= 40:
                 FONT_SIZE += 3
                 FONT = pygame.font.SysFont("SF Mono", FONT_SIZE)
-                char_width, char_height = FONT.size("A")
+                BOLD_FONT = pygame.font.SysFont("SF Mono", FONT_SIZE, bold=True)
+                char_width, char_height = FONT.size("n")
             elif 0 <= mouse_x <= 40 <= mouse_y <= 80:
                 FONT_SIZE -= 3
                 FONT = pygame.font.SysFont("SF Mono", FONT_SIZE)
-                char_width, char_height = FONT.size("A")
+                BOLD_FONT = pygame.font.SysFont("SF Mono", FONT_SIZE, bold=True)
+                char_width, char_height = FONT.size("n")
             elif scr_width // 2 - scr_width // 12.8 <= mouse_x <= scr_width // 2 and not (
                     scr_width // 2 - scr_width // 12.8 + 5 <= mouse_x <= scr_width // 2 - 5 and min(
                 abs(mouse_y - ((x + 1) * 100)) for x in range(int(scr_height // 100) + 1)) < 10):
@@ -605,11 +679,18 @@ while run:
         if event.type == pygame.KEYDOWN:
             key = event.unicode
             if event.key == pygame.K_BACKSPACE:
-                enteredNumber = enteredNumber[:-1]
+                enteredText = enteredText[:-1]
             elif event.key == pygame.K_RETURN:
-                code.append(Block(Number(numerify(enteredNumber)), 100, 100))
-            elif any(x == event.key for x in numberKeys) or event.key == pygame.K_PERIOD:
-                enteredNumber += key
+                k = pygame.key.get_pressed()
+                if enteredText.isnumeric():
+                    code.append(Block(Number(numerify(enteredText)), 100, 100))
+                elif enteredText.isalnum() and not enteredText[0].isnumeric():
+                    if not (k[pygame.K_LSHIFT] or k[pygame.K_RSHIFT]):
+                        code.append(Block(Variable(enteredText), 100, 100))
+                    else:
+                        code.append(Block(Assignment(enteredText, None), 100, 100))
+            elif any(x == event.key for x in numberKeys) or event.key == pygame.K_PERIOD or any(x == event.key for x in alphaKeys):
+                enteredText += key
             elif event.key == pygame.K_r:
                 trace = TraceTable()
 
@@ -682,8 +763,11 @@ while run:
         for key in trace.traceDict.keys():
             lst = [key] + [str(x) for x in trace.traceDict[key]]
             for j, i in enumerate(np.linspace(trace_y, trace_y + trace.height(), trace.length + 1)):
-                if j < len(lst):
-                    scr.blit(FONT.render((lst[j] if lst[j] != "None" else ""), True, (0, 0, 0)), (running_width + 5, i + 5))
+                if j == 0:
+                    scr.blit(BOLD_FONT.render(lst[j], True, (0, 0, 0)), (running_width + 5, i + 5))
+                elif j < len(lst):
+                    scr.blit(FONT.render((lst[j] if lst[j] != "None" else ""), True, (0, 0, 0)),
+                             (running_width + 5, i + 5))
             running_width += FONT.size(key)[0] + 10
 
     trace.length -= 1
@@ -706,8 +790,8 @@ while run:
     for line in turtle.lines:
         pygame.draw.line(scr, (0, 0, 0), (scr_width // 4 * 3 + line[0][0] * turtle.pixels_per_unit,
                                           scr_height // 4 - line[0][1] * turtle.pixels_per_unit), (
-                         scr_width // 4 * 3 + line[1][0] * turtle.pixels_per_unit,
-                         scr_height // 4 - line[1][1] * turtle.pixels_per_unit))
+                             scr_width // 4 * 3 + line[1][0] * turtle.pixels_per_unit,
+                             scr_height // 4 - line[1][1] * turtle.pixels_per_unit))
 
     centre_x = scr_width // 4 * 3
     centre_y = scr_height // 4
@@ -734,7 +818,7 @@ while run:
 
     # entering numbers to add them (will add at 0, 0)
     pygame.draw.rect(scr, (255, 255, 255), [0, scr_height - 50, scr_width // 2 - scr_width // 12.8, 50])
-    draw_text_center(scr, enteredNumber, (scr_width / 2 - scr_width / 12.8) // 2, scr_height - 25, FONT, (0, 0, 0))
+    draw_text_center(scr, enteredText, (scr_width / 2 - scr_width / 12.8) // 2, scr_height - 25, FONT, (0, 0, 0))
 
     # draw the increase and decrease size buttons
     pygame.draw.rect(scr, (255, 255, 255), [0, 0, 40, 40])
@@ -754,8 +838,7 @@ while run:
 
     # deal with mouse hand logic
     mouse_x, mouse_y = pygame.mouse.get_pos()
-    if (scr_width // 4 - 50 - scr_width // 12.8 // 2 <= mouse_x <= scr_width // 4 - scr_width // 12.8 // 2 + 50 and 20 <= mouse_y <= 70) or (
-            0 <= mouse_x <= 40 and 0 <= mouse_y <= 40) or (0 <= mouse_x <= 40 <= mouse_y <= 80):
+    if (scr_width // 4 - 50 - scr_width // 12.8 // 2 <= mouse_x <= scr_width // 4 - scr_width // 12.8 // 2 + 50 and 20 <= mouse_y <= 70) or (0 <= mouse_x <= 40 and 0 <= mouse_y <= 40) or (0 <= mouse_x <= 40 <= mouse_y <= 80):
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
     elif selected_new_block is not None or join_new_block is not None:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_SIZEALL)
