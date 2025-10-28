@@ -1,9 +1,11 @@
 import pygame
 import copy
 import datetime
+import time
 import math
 import os
 import numpy as np
+import threading
 
 pygame.init()
 
@@ -18,6 +20,7 @@ char_width, char_height = FONT.size("n")
 
 magnifyPlus = pygame.transform.scale(pygame.image.load("magnifyPlus.png"), (30, 30))
 magnifyMinus = pygame.transform.scale(pygame.image.load("magnifyMinus.png"), (30, 30))
+loading = pygame.transform.scale(pygame.image.load("loading.png"), (150, 150))
 
 ops = os.listdir(os.path.join(os.getcwd(), "operations"))
 comps = os.listdir(os.path.join(os.getcwd(), "comparisons"))
@@ -31,12 +34,12 @@ turtle2Ds = [pygame.image.load(os.path.join(os.path.join(os.getcwd(), "turtle2D"
 operations = [pygame.transform.scale(o, (72, 72)) for o in operations]
 comparisons = [pygame.transform.scale(o, (72, 72)) for o in comparisons]
 turtle2Ds = [pygame.transform.scale(o, (o.get_width() // (o.get_height() / 72), 72)) for o in turtle2Ds]
-assignments = pygame.image.load("assignment.png")
-assignments = pygame.transform.scale(assignments, (assignments.get_width() // (assignments.get_height() / 72), 72))
 
 numberKeys = [pygame.K_0, pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9]
 
 alphaKeys = [pygame.K_a, pygame.K_b, pygame.K_c, pygame.K_d, pygame.K_e, pygame.K_f, pygame.K_g, pygame.K_h, pygame.K_i, pygame.K_j, pygame.K_k, pygame.K_l, pygame.K_m, pygame.K_n, pygame.K_o, pygame.K_p, pygame.K_q, pygame.K_r, pygame.K_s, pygame.K_t, pygame.K_u, pygame.K_v, pygame.K_w, pygame.K_x, pygame.K_y, pygame.K_z]
+
+isProgramRunning = False
 
 
 # subroutine to draw text centered at an x and y
@@ -44,19 +47,6 @@ def draw_text_center(surf, text, x, y, font, color):
     text_surface = font.render(text, True, color)
     text_rect = text_surface.get_rect(center=(x, y))
     surf.blit(text_surface, text_rect)
-
-
-def get_point(x1, y1, x2, y2, t):
-    return [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t]
-
-
-def bezier(cp, t):
-    new = []
-    for i in range(len(cp) - 1):
-        new.append(get_point(*cp[i], *cp[i + 1], t))
-    if len(new) == 1:
-        return new[0]
-    return bezier(new, t)
 
 
 # if the string is a float then convert it to a float. else convert it to an int. assuming input can only be those
@@ -122,15 +112,6 @@ class Turtle2D:
         self.y = y
 
 
-class Turtle2DMovementLinp:
-    def __init__(self, start_x, start_y, dest_x, dest_y, t):
-        self.dest_x = dest_x
-        self.dest_y = dest_y
-        self.start_x = start_x
-        self.start_y = start_y
-        self.t = t
-
-
 class Turtle2DMovement:
     def __init__(self, start_x, start_y, dest_x, dest_y):
         self.dest_x = dest_x
@@ -162,13 +143,6 @@ class Menu:
         self.offsets = [0 for _ in range(len(items))]
         self.start_x = start_x
         self.start_y = start_y
-
-
-class Turtle2DBezier:
-    def __init__(self, cp, t):
-        self.cp = cp
-        self.curr_x, self.curr_y = cp[0]
-        self.t = t
 
 
 class TraceTable:
@@ -207,9 +181,6 @@ def get_max_depth(block):
     elif isinstance(block, Turtle2DMovement):
         return 1 + max(get_max_depth(block.start_x), get_max_depth(block.start_y), get_max_depth(block.dest_x),
                        get_max_depth(block.dest_y))
-    elif isinstance(block, Turtle2DMovementLinp):
-        return 1 + max(get_max_depth(block.start_x), get_max_depth(block.start_y), get_max_depth(block.dest_x),
-                       get_max_depth(block.dest_y), get_max_depth(block.t))
     elif isinstance(block, Turtle2DMoveForward):
         return 1 + get_max_depth(block.dist)
     elif isinstance(block, Turtle2DRotate):
@@ -236,9 +207,6 @@ def get_width(block):
     elif isinstance(block, Turtle2DMovement):
         return get_width(block.start_x) + get_width(block.start_y) + get_width(block.dest_x) + get_width(
             block.dest_y) + 25 + FONT.size("move")[0]
-    elif isinstance(block, Turtle2DMovementLinp):
-        return get_width(block.start_x) + get_width(block.start_y) + get_width(block.dest_x) + get_width(
-            block.dest_y) + get_width(block.t) + 40 + FONT.size("moveLinp")[0]
     elif isinstance(block, Turtle2DMoveForward):
         return get_width(block.dist) + 20 + FONT.size("moveForward")[0]
     elif isinstance(block, Turtle2DRotate):
@@ -321,22 +289,6 @@ def drawBlock(block, x, y, last_height=None):
         drawBlock(block.dest_y,
                   x + FONT.size("move")[0] + 20 + get_width(block.start_x) + get_width(block.start_y) + get_width(
                       block.dest_x), y + 5, last_height=overall_height)
-    elif isinstance(block, Turtle2DMovementLinp):
-        pygame.draw.rect(scr, (152, 59, 191), [x, y, overall_width, overall_height])
-        pygame.draw.rect(scr, (71, 29, 96), [x, y, overall_width, overall_height], 2)
-        draw_text_center(scr, "moveLinp", x + 5 + FONT.size("moveLinp")[0] // 2, (2 * y + overall_height) // 2, FONT,
-                         (0, 0, 0))
-        drawBlock(block.start_x, x + 5 + FONT.size("moveLinp")[0], y + 5, last_height=overall_height)
-        drawBlock(block.start_y, x + FONT.size("moveLinp")[0] + 10 + get_width(block.start_x), y + 5,
-                  last_height=overall_height)
-        drawBlock(block.dest_x, x + FONT.size("moveLinp")[0] + 15 + get_width(block.start_x) + get_width(block.start_y),
-                  y + 5, last_height=overall_height)
-        drawBlock(block.dest_y,
-                  x + FONT.size("moveLinp")[0] + 20 + get_width(block.start_x) + get_width(block.start_y) + get_width(
-                      block.dest_x), y + 5, last_height=overall_height)
-        drawBlock(block.t,
-                  x + FONT.size("moveLinp")[0] + 35 + get_width(block.start_x) + get_width(block.start_y) + get_width(
-                      block.dest_x) + get_width(block.dest_y), y + 5, last_height=overall_height)
     elif isinstance(block, Turtle2DMoveForward):
         pygame.draw.rect(scr, (152, 59, 191), [x, y, overall_width, overall_height])
         pygame.draw.rect(scr, (71, 29, 96), [x, y, overall_width, overall_height], 2)
@@ -404,31 +356,37 @@ def evaluateExpr(block, prev=""):
     return evalLeft + evalRight if block.sign == "+" else evalLeft - evalRight if block.sign == "-" else evalLeft * evalRight if block.sign == "×" else evalLeft / evalRight if block.sign == "÷" else evalLeft ** evalRight if block.sign == "^" else evalLeft > evalRight if block.sign == ">" else evalLeft < evalRight if block.sign == "<" else evalLeft == evalRight if block.sign == "=" else 0
 
 
-ifElseOutputs = []
-
-
 def evaluateIfElse(block, num):
-    if evaluateExpr(block.cond):
-        for statement in block.true:
-            if not isinstance(statement, IfElse):
-                execute(statement, num)
-            else:
-                evaluateIfElse(statement, num)
-    else:
-        for statement in block.false:
-            if not isinstance(statement, IfElse):
-                execute(statement, num)
-            else:
-                evaluateIfElse(statement, num)
+    global run_order, outputs
+    try:
+        if evaluateExpr(block.cond):
+            for statement in block.true:
+                if not isinstance(statement, IfElse):
+                    execute(statement, num)
+                else:
+                    evaluateIfElse(statement, num)
+        else:
+            for statement in block.false:
+                if not isinstance(statement, IfElse):
+                    execute(statement, num)
+                else:
+                    evaluateIfElse(statement, num)
+    except SyntaxError:
+        output = f"Error running block {num}: missing or invalid condition provided to if statement"
+        wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
+        outputs.append(wrapped)
 
 
 def execute(block, num):
+    global run_order, outputs
     if isinstance(block, Comparison) or isinstance(block, Operation) or isinstance(
             block, Number):
         try:
             output = f"Ran block {num}: " + str(evaluateExpr(block))
         except SyntaxError as e:
             output = f"Error running block {num}: missing or invalid argument provided to {e}"
+        except OverflowError:
+            output = f"Error running block {num}: division result too large"
         wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
         outputs.append(wrapped)
     elif isinstance(block, Turtle2DMovement):
@@ -486,6 +444,27 @@ def execute(block, num):
         trace.update(block.varName, evaluateExpr(block.expr))
         wrapped = [output[i: i + line_length] for i in range(0, len(output), line_length)]
         outputs.append(wrapped)
+
+
+def executeBlocks():
+    global isProgramRunning, run_order, outputs, current_outputs
+    isProgramRunning = True
+    for block in run_order:
+        if not isinstance(block.block, IfElse):
+            execute(block.block, run_order.index(block) + 1)
+        else:
+            evaluateIfElse(block.block, run_order.index(block) + 1)
+    isProgramRunning = False
+    outputs.insert(0, [now[i: i + line_length] for i in range(0, len(now), line_length)])
+    current_outputs = copy.deepcopy(outputs)
+
+
+def loadingScreen():
+    surf = pygame.Surface((scr_width, scr_height))
+    surf.set_alpha(128)
+    surf.fill((0, 0, 0))
+    scr.blit(surf, (0, 0))
+    scr.blit(loading, (scr_width // 2 - 75, scr_height // 2 - 75))
 
 
 def addBlock(block, toAdd, x, y, pos_x, pos_y, par=None, attr=None):
@@ -561,145 +540,130 @@ def addBlock(block, toAdd, x, y, pos_x, pos_y, par=None, attr=None):
                 addBlock(statement, toAdd, x, y, start_x, pos_y + 5, par=block, attr="false")
                 break
             start_x += 5 + get_width(statement)
+    elif isinstance(block, Assignment):
+        if pos_x + 5 + FONT.size(block.varName + " <- ")[0] <= x <= pos_x + 5 + FONT.size(block.varName + " <- ")[0] + get_width(block.expr) and pos_y + 5 <= y <= pos_y + 55 + 10 * get_max_depth(block.expr):
+            addBlock(block.expr, toAdd, x, y, pos_x + 5 + FONT.size(block.varName + " <- ")[0], pos_y + 5, par=block, attr="expr")
 
 
-# initialise display surface to 1280 by 720 (720p)
 scr_width, scr_height = 1280, 720
 scr = pygame.display.set_mode((scr_width, scr_height), pygame.RESIZABLE)
 
-# initialised to 0 or could have test blocks pre-populated
-# store previous mouse coordinates for panning logic - initialised to None
-# store a sensitivity for the pan
-# store the lines that should be displayed in the terminal - will update if the user adds blocks then runs again
-# buffer the new blocks that should be added if applicable
-code = [Block(IfElse(Comparison(">", Number(2), Number(3)), [Operation("+", Number(1), Number(2))],
-                     [Operation("+", Number(2), Number(3))]), 100, 100)]
-"""for i in range(6):
-    code.append(Block(Turtle2DRotate(Number(60)), 100, i * 100 * 2 + 100))
-    code.append(Block(Turtle2DMoveForward(Number(2)), 100, i * 100 * 2 + 150))"""
+code = []
 prev_mouse_x, prev_mouse_y = None, None
 selected_new_block = None
 join_new_block = None
 sensitivity = 1
 enteredText = ""
+homeScreen = False
 current_outputs = []
 
 turtle = Turtle2D()
 menu = Menu(
-    [operations, comparisons, turtle2Ds, [assignments]],
-    [ops, comps, t2Ds, ["assignment"]],
+    [operations, comparisons, turtle2Ds],
+    [ops, comps, t2Ds],
     scr_width // 2 - scr_width // 12.8 + 10,
     10
 )
 
 trace = TraceTable()
 
+start = time.time()
+
 run = True
 while run:
-    # event loop once per frame
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
-        if event.type == pygame.MOUSEBUTTONUP:
-            # reset panning logic when mouse released from pan
-            prev_mouse_x, prev_mouse_y = None, None
-            if selected_new_block is not None:
+        if not homeScreen:
+            if event.type == pygame.MOUSEBUTTONUP:
+                prev_mouse_x, prev_mouse_y = None, None
+                if selected_new_block is not None:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    code.append(Block(selected_new_block, mouse_x, mouse_y))
+                    selected_new_block = None
+                if join_new_block is not None:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    for block in code:
+                        if block.x <= mouse_x <= block.x + get_width(block.block) and block.y <= mouse_y <= block.y + 50 + 10 * get_max_depth(block.block):
+                            addBlock(block.block, join_new_block, mouse_x, mouse_y, block.x, block.y)
+                            break
+                    else:
+                        code.append(Block(join_new_block, mouse_x, mouse_y))
+                    join_new_block = None
+            if event.type == pygame.VIDEORESIZE:
+                scr_width, scr_height = scr.get_size()
+                menu.start_x = scr_width // 2 - scr_width // 12.8 + 10
+            if event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
-                # create a new block with the associated block data
-                code.append(Block(selected_new_block, mouse_x, mouse_y))
-                selected_new_block = None
-            if join_new_block is not None:
-                mouse_x, mouse_y = pygame.mouse.get_pos()
-                # which code block to add the dragged block to
-                for block in code:
-                    if block.x <= mouse_x <= block.x + get_width(
-                            block.block) and block.y <= mouse_y <= block.y + 50 + 10 * get_max_depth(block.block):
-                        addBlock(block.block, join_new_block, mouse_x, mouse_y, block.x, block.y)
-                        break
+                if scr_width // 4 - 50 - scr_width // 12.8 // 2 <= mouse_x <= scr_width // 4 - scr_width // 12.8 // 2 + 50 and 20 <= mouse_y <= 70:
+                    run_order = sorted(code, key=lambda l: (l.y, l.x))
+                    now = datetime.datetime.now().strftime("Run time: %d/%m/%Y %H:%M:%S")
+                    outputs = []
+                    line_length = scr_width // 2 // char_width - 1
+                    executeBlock = threading.Thread(target=executeBlocks)
+                    executeBlock.start()
+                elif 0 <= mouse_x <= 40 and 0 <= mouse_y <= 40:
+                    FONT_SIZE += 3
+                    FONT = pygame.font.SysFont("SF Mono", FONT_SIZE)
+                    BOLD_FONT = pygame.font.SysFont("SF Mono", FONT_SIZE, bold=True)
+                    char_width, char_height = FONT.size("n")
+                elif 0 <= mouse_x <= 40 <= mouse_y <= 80:
+                    FONT_SIZE -= 3
+                    FONT = pygame.font.SysFont("SF Mono", FONT_SIZE)
+                    BOLD_FONT = pygame.font.SysFont("SF Mono", FONT_SIZE, bold=True)
+                    char_width, char_height = FONT.size("n")
+                elif scr_width // 2 - scr_width // 12.8 <= mouse_x <= scr_width // 2 and not (
+                        scr_width // 2 - scr_width // 12.8 + 5 <= mouse_x <= scr_width // 2 - 5 and min(
+                    abs(mouse_y - ((x + 1) * 100)) for x in range(int(scr_height // 100) + 1)) < 10):
+                    ind = (mouse_y - menu.start_y) // 100
+                    try:
+                        total_width = sum(x.get_width() for x in menu.items[ind])
+                        item_name = menu.item_names[ind][int(menu.offsets[ind] / total_width * len(menu.items[ind]))]
+                        if item_name in ops:
+                            selected_new_block = Operation(item_name[-5], None, None)
+                        elif item_name in comps:
+                            selected_new_block = Comparison(item_name[-5], None, None)
+                        elif item_name == "turtle2Dmovement.png":
+                            selected_new_block = Turtle2DMovement(None, None, None, None)
+                        elif item_name == "turtle2Dwait.png":
+                            selected_new_block = TurtleWait(None)
+                        elif item_name == "turtle2DmoveForward.png":
+                            selected_new_block = Turtle2DMoveForward(None)
+                        elif item_name == "turtle2Drotate.png":
+                            selected_new_block = Turtle2DRotate(None)
+                    except IndexError:
+                        pass
                 else:
-                    # if they moved the block but not into another one then just add the block back
-                    code.append(Block(join_new_block, mouse_x, mouse_y))
-                join_new_block = None
-        if event.type == pygame.VIDEORESIZE:
-            # if the user resized the screen then update the new size to scr_width and scr_height
-            scr_width, scr_height = scr.get_size()
-            menu.start_x = scr_width // 2 - scr_width // 12.8 + 10
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            mouse_x, mouse_y = pygame.mouse.get_pos()
-            if scr_width // 4 - 50 - scr_width // 12.8 // 2 <= mouse_x <= scr_width // 4 - scr_width // 12.8 // 2 + 50 and 20 <= mouse_y <= 70:
-                # run first by block y, for equal block y's, run first by block x
-                run_order = sorted(code, key=lambda l: (l.y, l.x))
-                now = datetime.datetime.now().strftime("Run time: %d/%m/%Y %H:%M:%S")
-                outputs = []
-                line_length = scr_width // 2 // char_width - 1
-                for block in run_order:
-                    if not isinstance(block.block, IfElse):
-                        execute(block.block, run_order.index(block) + 1)
-                    else:
-                        evaluateIfElse(block.block, run_order.index(block) + 1)
-                outputs.insert(0, [now[i: i + line_length] for i in range(0, len(now), line_length)])
-                current_outputs = copy.deepcopy(outputs)
-            elif 0 <= mouse_x <= 40 and 0 <= mouse_y <= 40:
-                FONT_SIZE += 3
-                FONT = pygame.font.SysFont("SF Mono", FONT_SIZE)
-                BOLD_FONT = pygame.font.SysFont("SF Mono", FONT_SIZE, bold=True)
-                char_width, char_height = FONT.size("n")
-            elif 0 <= mouse_x <= 40 <= mouse_y <= 80:
-                FONT_SIZE -= 3
-                FONT = pygame.font.SysFont("SF Mono", FONT_SIZE)
-                BOLD_FONT = pygame.font.SysFont("SF Mono", FONT_SIZE, bold=True)
-                char_width, char_height = FONT.size("n")
-            elif scr_width // 2 - scr_width // 12.8 <= mouse_x <= scr_width // 2 and not (
-                    scr_width // 2 - scr_width // 12.8 + 5 <= mouse_x <= scr_width // 2 - 5 and min(
-                abs(mouse_y - ((x + 1) * 100)) for x in range(int(scr_height // 100) + 1)) < 10):
-                ind = (mouse_y - menu.start_y) // 100
-                total_width = sum(x.get_width() for x in menu.items[ind])
-                item_name = menu.item_names[ind][int(menu.offsets[ind] / total_width * len(menu.items[ind]))]
-                if item_name in ops:
-                    selected_new_block = Operation(item_name[-5], None, None)
-                elif item_name in comps:
-                    selected_new_block = Comparison(item_name[-5], None, None)
-                elif item_name == "turtle2Dmovement.png":
-                    selected_new_block = Turtle2DMovement(None, None, None, None)
-                elif item_name == "turtle2DmovementLinp.png":
-                    selected_new_block = Turtle2DMovementLinp(None, None, None, None, None)
-                elif item_name == "turtle2Dwait.png":
-                    selected_new_block = TurtleWait(None)
-                elif item_name == "turtle2DmoveForward.png":
-                    selected_new_block = Turtle2DMoveForward(None)
-                elif item_name == "turtle2Drotate.png":
-                    selected_new_block = Turtle2DRotate(None)
-            else:
-                for b, block in enumerate(code):
-                    if block.x <= mouse_x <= block.x + get_width(
-                            block.block) and block.y <= mouse_y <= block.y + 50 + 10 * get_max_depth(block.block):
-                        join_new_block = block.block
-                        del code[b]
-                        break
-        if event.type == pygame.KEYDOWN:
-            key = event.unicode
-            if event.key == pygame.K_BACKSPACE:
-                enteredText = enteredText[:-1]
-            elif event.key == pygame.K_RETURN:
-                k = pygame.key.get_pressed()
-                if enteredText.isnumeric():
-                    code.append(Block(Number(numerify(enteredText)), 100, 100))
-                elif enteredText.isalnum() and not enteredText[0].isnumeric():
-                    if not (k[pygame.K_LSHIFT] or k[pygame.K_RSHIFT]):
-                        code.append(Block(Variable(enteredText), 100, 100))
-                    else:
-                        code.append(Block(Assignment(enteredText, None), 100, 100))
-            elif any(x == event.key for x in numberKeys) or event.key == pygame.K_PERIOD or any(x == event.key for x in alphaKeys):
-                enteredText += key
-            elif event.key == pygame.K_r:
-                trace = TraceTable()
+                    for b, block in enumerate(code):
+                        if block.x <= mouse_x <= block.x + get_width(
+                                block.block) and block.y <= mouse_y <= block.y + 50 + 10 * get_max_depth(block.block):
+                            join_new_block = block.block
+                            del code[b]
+                            break
+            if event.type == pygame.KEYDOWN:
+                key = event.unicode
+                if event.key == pygame.K_BACKSPACE:
+                    enteredText = enteredText[:-1]
+                elif event.key == pygame.K_RETURN:
+                    k = pygame.key.get_pressed()
+                    if enteredText == "if":
+                        code.append(Block(IfElse(None, [], []), 100, 100))
+                    elif enteredText.isnumeric():
+                        code.append(Block(Number(numerify(enteredText)), 100, 100))
+                    elif enteredText.isalnum() and not enteredText[0].isnumeric():
+                        if not (k[pygame.K_LSHIFT] or k[pygame.K_RSHIFT]):
+                            code.append(Block(Variable(enteredText), 100, 100))
+                        else:
+                            code.append(Block(Assignment(enteredText, None), 100, 100))
+                elif any(x == event.key for x in numberKeys) or event.key == pygame.K_PERIOD or any(x == event.key for x in alphaKeys):
+                    enteredText += key
+                elif event.key == pygame.K_r:
+                    trace = TraceTable()
 
-    # refresh screen
     scr.fill((255, 255, 255))
 
     mouse = pygame.mouse.get_pressed()
     if mouse[0]:
-        # panning
         if prev_mouse_x is None and prev_mouse_y is None and selected_new_block is None and join_new_block is None:
             prev_mouse_x, prev_mouse_y = pygame.mouse.get_pos()
             if prev_mouse_x > scr_width // 2 - scr_width // 12.8:
@@ -726,9 +690,9 @@ while run:
             except IndexError:
                 pass
 
-    # Display each block and its block number
-    for i, block in enumerate(code):
-        draw_text_center(scr, f"Block {i + 1}", block.x, block.y - 20, FONT, (0, 0, 0))
+    order = sorted(code, key=lambda l: (l.y, l.x))
+    for block in code:
+        draw_text_center(scr, f"Block {order.index(block) + 1}", block.x, block.y - 20, FONT, (0, 0, 0))
         if isinstance(block, Block):
             drawBlock(block.block, block.x, block.y)
 
@@ -740,7 +704,6 @@ while run:
 
     trace.length += 1
 
-    # Display outputs
     running_height = 0
     for message in current_outputs:
         for k, line in enumerate(message):
@@ -772,7 +735,6 @@ while run:
 
     trace.length -= 1
 
-    # Display the menu
     for i, row in enumerate(menu.items):
         running_width = 0
         for icon in row:
@@ -786,7 +748,6 @@ while run:
 
     pygame.draw.rect(scr, (255, 255, 255), [scr_width // 2, 0, scr_width // 2, scr_height // 2])
 
-    # turtle stuff
     for line in turtle.lines:
         pygame.draw.line(scr, (0, 0, 0), (scr_width // 4 * 3 + line[0][0] * turtle.pixels_per_unit,
                                           scr_height // 4 - line[0][1] * turtle.pixels_per_unit), (
@@ -816,11 +777,9 @@ while run:
             turtle.angle + math.pi / 1.5 * 2))
     pygame.draw.circle(scr, (255, 255, 255), ((point1[0] + point2[0]) / 2, (point1[1] + point2[1]) / 2), 3)
 
-    # entering numbers to add them (will add at 0, 0)
     pygame.draw.rect(scr, (255, 255, 255), [0, scr_height - 50, scr_width // 2 - scr_width // 12.8, 50])
     draw_text_center(scr, enteredText, (scr_width / 2 - scr_width / 12.8) // 2, scr_height - 25, FONT, (0, 0, 0))
 
-    # draw the increase and decrease size buttons
     pygame.draw.rect(scr, (255, 255, 255), [0, 0, 40, 40])
     pygame.draw.rect(scr, (255, 255, 255), [0, 40, 40, 40])
     scr.blit(magnifyPlus, (5, 5))
@@ -828,7 +787,6 @@ while run:
     pygame.draw.rect(scr, (0, 0, 0), [0, 0, 40, 40], 5)
     pygame.draw.rect(scr, (0, 0, 0), [0, 40, 40, 40], 5)
 
-    # draw the separating black lines
     pygame.draw.line(scr, (0, 0, 0), (scr_width // 2, 0), (scr_width // 2, scr_height), 10)
     pygame.draw.line(scr, (0, 0, 0), (scr_width // 2 - scr_width // 12.8, 0),
                      (scr_width // 2 - scr_width // 12.8, scr_height), 10)
@@ -836,7 +794,9 @@ while run:
     pygame.draw.line(scr, (0, 0, 0), (scr_width // 2, scr_height // 2), (scr_width, scr_height // 2), 10)
     pygame.draw.line(scr, (0, 0, 0), (0, scr_height - 50), (scr_width // 2 - scr_width // 12.8, scr_height - 50), 10)
 
-    # deal with mouse hand logic
+    if isProgramRunning:
+        loadingScreen()
+
     mouse_x, mouse_y = pygame.mouse.get_pos()
     if (scr_width // 4 - 50 - scr_width // 12.8 // 2 <= mouse_x <= scr_width // 4 - scr_width // 12.8 // 2 + 50 and 20 <= mouse_y <= 70) or (0 <= mouse_x <= 40 and 0 <= mouse_y <= 40) or (0 <= mouse_x <= 40 <= mouse_y <= 80):
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
@@ -845,8 +805,6 @@ while run:
     else:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
-    # update display once per frame
     pygame.display.update()
 
-# quit pygame
 pygame.quit()
