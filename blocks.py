@@ -642,13 +642,14 @@ class BlockFunctions:
                     BlockFunctions.addBlock(font, statement, toAdd, x, y, start_x, pos_y + 5, par=block, attr="true")
                     break
                 start_x += 5 + BlockFunctions.get_width(statement, font)
-            start_x += font.size("else")[0]
-            for statement in block.false:
-                if start_x <= x <= start_x + BlockFunctions.get_width(statement, font) and pos_y + 5 <= y <= pos_y + 55 + 10 * BlockFunctions.get_max_depth(
-                        statement):
-                    BlockFunctions.addBlock(font, statement, toAdd, x, y, start_x, pos_y + 5, par=block, attr="false")
-                    break
-                start_x += 5 + BlockFunctions.get_width(statement, font)
+            else:
+                start_x += font.size("else")[0]
+                for statement in block.false:
+                    if start_x <= x <= start_x + BlockFunctions.get_width(statement, font) and pos_y + 5 <= y <= pos_y + 55 + 10 * BlockFunctions.get_max_depth(
+                            statement):
+                        BlockFunctions.addBlock(font, statement, toAdd, x, y, start_x, pos_y + 5, par=block, attr="false")
+                        break
+                    start_x += 5 + BlockFunctions.get_width(statement, font)
         elif isinstance(block, While):
             if pos_x + 5 + font.size("while")[0] <= x <= pos_x + 5 + font.size("while")[0] + BlockFunctions.get_width(block.cond, font) and pos_y + 5 <= y <= pos_y + 55 + 10 * BlockFunctions.get_max_depth(block.cond):
                 BlockFunctions.addBlock(font, block.cond, toAdd, x, y, pos_x + 5 + font.size("while")[0], pos_y + 5, par=block, attr="cond")
@@ -664,4 +665,3 @@ class BlockFunctions:
                 BlockFunctions.addBlock(font, block.expr, toAdd, x, y, pos_x + 5 + font.size(block.varName + " <- ")[0], pos_y + 5,
                          par=block,
                          attr="expr")
-
